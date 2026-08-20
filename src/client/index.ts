@@ -17,8 +17,13 @@ export const inject = ['slots']
 /** Register one keyed toolview entry (a keyed hit replaces the shipped row). */
 function registerToolview(ctx: ClientContext, key: 'read' | 'edit' | 'write'): void {
   ctx.slots.inject('tool.call.toolview', () =>
-    ctx.slots.register({ name: 'tool.call.toolview', key }, JumpRow))
+    ctx.slots.register({ name: 'tool.call.toolview', key, priority: OVERRIDE_PRIORITY }, JumpRow))
 }
+
+// ui-tool 内部已用默认 priority 0 注册 read/edit/write 原生行；keyed slot 的
+// winner 是 priority 最低者（lowest renders），同 key 同 priority 会直接 throw。
+// 因此覆盖必须用更低的负 priority（DSH 惯例 ui-subagent 用 -10）。
+const OVERRIDE_PRIORITY = -10
 
 /** Apply the browser half: register the three toolviews once the slots service is up. */
 export function apply(ctx: ClientContext): void {
