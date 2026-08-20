@@ -1,0 +1,21 @@
+.fileLink {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--dsw-link, #2f6fdb);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+.fileLink:hover {
+  color: var(--dsw-link-hover, #3a7de8);
+}
+
+.plain {
+  font: inherit;
+  opacity: 0.85;
+}

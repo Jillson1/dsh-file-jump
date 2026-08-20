@@ -1,0 +1,7 @@
+# bundle patch for the dsh-file-jump plugin: inserts its plugin row into the web
+# profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
+# manifest field); install with
+# `dsh plugin --profile web add link:<repo>/packages/dsh-file-jump`.
+- insert:
+    - id: ui-dsh-file-jump
+      name: '@jillson1/dsh-file-jump'
