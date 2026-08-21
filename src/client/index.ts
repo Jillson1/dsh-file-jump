@@ -10,6 +10,7 @@
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { JumpRow } from './JumpRow.tsx'
+import { installComposerInjection } from './composerInject.ts'
 
 /** Required service: slots for the toolview keyed-slot takeover. */
 export const inject = ['slots']
@@ -32,4 +33,6 @@ export function apply(ctx: ClientContext): void {
     registerToolview(scope, 'edit')
     registerToolview(scope, 'write')
   })
+  // "Add to DSH" 下行注入：把 VS Code 右键发来的文件引用写入当前会话 composer。
+  installComposerInjection(ctx)
 }
