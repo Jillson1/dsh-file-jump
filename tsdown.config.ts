@@ -6,6 +6,6 @@
  * externals resolved through the loader module table). The node half builds
  * from src (tsdown compiles TS directly) and types ship from lib/types (tsc).
  */
-import { clientBundle } from '../../shared/tsdown.client.ts'
+import { clientBundle } from './shared/tsdown.client.ts'
 
 export default clientBundle('@jillson1/dsh-file-jump', ['src/index.ts'])
