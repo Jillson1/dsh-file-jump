@@ -81,6 +81,19 @@ export function editOldTextFrom(block: ToolCallBlock): string | undefined {
 }
 
 /**
+ * Edit new-text (the after-snippet): taken from the call-time diff view's first hunk.
+ * Used as the jump fallback — once the edit is applied the before-snippet is gone
+ * from the file, so the extension locates the line by this after-snippet instead.
+ */
+export function editNewTextFrom(block: ToolCallBlock): string | undefined {
+  const callView = 'callView' in block ? block.callView : undefined
+  const resultView = 'resultView' in block ? block.resultView : undefined
+  const hunk = firstDiffHunk(callView) ?? firstDiffHunk(resultView)
+  if (hunk === null) return undefined
+  return typeof hunk.newText === 'string' && hunk.newText !== '' ? hunk.newText : undefined
+}
+
+/**
  * Read line offset (1-based first line shown), for read result cards: the
  * read tool already persists `offset`, so we pass it through directly.
  */

@@ -35,6 +35,8 @@ export interface DiffAppliedPayload {
   cwd?: string
   /** Stable tool-call identity — the dedupe key. */
   callId: string
+  /** Source tool name ('edit' | 'write') — decides the host-side discard semantics. */
+  tool?: string
 }
 
 /** One hunk from the wire `card:'diff'` view (oldText may be null for create/overwrite). */
@@ -54,11 +56,10 @@ function narrowDiffs(view: unknown): AppliedDiff[] {
     if (typeof hunk !== 'object' || hunk === null) continue
     const { oldText, newText } = hunk as DiffHunkLike
     if (typeof newText !== 'string' || newText === '') continue
-    // Create/overwrite (oldText null): no revert anchor, and whole-file writes
-    // are better served by the open-file path — keep the tracker strictly
-    // reversible by only notifying edits with a before-snippet.
-    if (typeof oldText !== 'string' || oldText === '') continue
-    out.push({ oldText, newText })
+    // Create/overwrite (oldText null): no revert anchor on the host side, but the
+    // write 新建 scene still wants the whole new content highlighted (all lines
+    // are additions) — carry oldText as '' so the tracker renders 全绿高亮.
+    out.push({ oldText: typeof oldText === 'string' ? oldText : '', newText })
   }
   return out
 }
@@ -86,11 +87,18 @@ const MUTATION_TOOLS = new Set(['edit', 'write'])
  * has been written; settled resultView remains authoritative when present.
  */
 export function extractAppliedDiffs(block: ToolCallBlock): AppliedDiff[] | null {
-  if (!MUTATION_TOOLS.has(blockName(block))) return null
+  const name = blockName(block)
+  if (!MUTATION_TOOLS.has(name)) return null
   const callView = 'callView' in block ? block.callView : undefined
   const resultView = 'resultView' in block ? block.resultView : undefined
   const callDiffs = narrowDiffs(callView)
-  const diffs = callDiffs.length > 0 ? callDiffs : narrowDiffs(resultView)
+  const resultDiffs = narrowDiffs(resultView)
+  // write：优先 resultView——它是落盘后的权威 diff，覆盖场景能拿到真实改前片段
+  //（新建场景 oldText 仍为 null → 归一为 ''，供宿主判定"丢弃 = 删除文件"）。
+  // edit：优先 callView——old_string/new_string 精确，供卡片点击定位真实修改行。
+  const diffs = name === 'write'
+    ? (resultDiffs.length > 0 ? resultDiffs : callDiffs)
+    : (callDiffs.length > 0 ? callDiffs : resultDiffs)
   return diffs.length === 0 ? null : diffs
 }
 
@@ -147,5 +155,5 @@ export function takePendingDiff(
   const path = diffTargetPath(cwd, block)
   if (path === undefined) return null
   notified.add(callId)
-  return { kind: DIFF_EVENT, path, diffs, cwd, callId }
+  return { kind: DIFF_EVENT, path, diffs, cwd, callId, tool: blockName(block) }
 }

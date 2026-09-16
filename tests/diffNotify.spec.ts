@@ -71,8 +71,8 @@ describe('extractAppliedDiffs', () => {
     const diffs = extractAppliedDiffs(settledEdit())
     expect(diffs).toEqual([{ oldText: 'x', newText: 'y' }])
   })
-  it('settled write（oldText null）→ null（不可撤销，不通知）', () => {
-    expect(extractAppliedDiffs(settledWrite())).toBeNull()
+  it('settled write（oldText null）→ 归一为 oldText:"" 通知（全绿高亮）', () => {
+    expect(extractAppliedDiffs(settledWrite())).toEqual([{ oldText: '', newText: 'hi' }])
   })
   it('running block 从 callView 提取（宽松：running 时也通知，扩展按 newText 重定位）', () => {
     const diffs = extractAppliedDiffs(runningEdit())
@@ -115,6 +115,7 @@ describe('takePendingDiff', () => {
       diffs: [{ oldText: 'x', newText: 'y' }],
       cwd: '/w',
       callId: 'c-edit-1',
+      tool: 'edit',
     })
     expect(notified.has('c-edit-1')).toBe(true)
   })
@@ -127,10 +128,35 @@ describe('takePendingDiff', () => {
     const b = settledEdit({ callId: undefined })
     expect(takePendingDiff('/w', b, new Set())).toBeNull()
   })
-  it('write（oldText null）→ null 且不记录', () => {
+  it('write（oldText null）→ 通知 payload，oldText 归一为空串，tool=write', () => {
     const notified = new Set<string>()
-    expect(takePendingDiff('/w', settledWrite(), notified)).toBeNull()
-    expect(notified.size).toBe(0)
+    const p = takePendingDiff('/w', settledWrite(), notified)
+    expect(p).not.toBeNull()
+    expect(p?.callId).toBe('c-write-1')
+    expect(p?.diffs).toEqual([{ oldText: '', newText: 'hi' }])
+    expect(p?.tool).toBe('write')
+    expect(notified.has('c-write-1')).toBe(true)
+  })
+  it('write 覆盖（resultView 有真实改前片段）→ 优先 resultView，不用 callView 的 null', () => {
+    const b = settledWrite({
+      resultView: {
+        card: 'diff',
+        title: 'Write n.ts',
+        diffs: [{ path: 'n.ts', oldText: 'old line', newText: 'new line' }],
+      },
+    })
+    expect(extractAppliedDiffs(b)).toEqual([{ oldText: 'old line', newText: 'new line' }])
+  })
+  it('edit 仍优先 callView（old_string/new_string 精确，供跳行定位）', () => {
+    const b = settledEdit({
+      callView: { card: 'diff', title: 'Edit src/a.ts', diffs: [{ path: 'src/a.ts', oldText: 'x', newText: 'y' }] },
+      resultView: {
+        card: 'diff',
+        title: 'Edit src/a.ts',
+        diffs: [{ path: 'src/a.ts', oldText: 'ctx-x-ctx', newText: 'ctx-y-ctx' }],
+      },
+    })
+    expect(extractAppliedDiffs(b)).toEqual([{ oldText: 'x', newText: 'y' }])
   })
   it('running edit 也通知（宽松语义：callView 有 diffs 即广播）', () => {
     const p = takePendingDiff('/w', runningEdit(), new Set())

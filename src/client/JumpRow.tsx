@@ -13,6 +13,7 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import {
   blockArgsRaw,
   editOldTextFrom,
+  editNewTextFrom,
   filePathFromArgs,
   isErrorBlock,
   readOffsetFrom,
@@ -82,12 +83,15 @@ export function JumpRow({ toolName, block, cwd, openFile }: JumpRowProps) {
   }
 
   const oldText = EDIT_TOOLS.has(toolName) ? editOldTextFrom(block) : undefined
+  const newText = EDIT_TOOLS.has(toolName) ? editNewTextFrom(block) : undefined
   const line = READ_TOOLS.has(toolName) ? readOffsetFrom(block) : undefined
   const display = titleFor(toolName, filePath)
 
   const dataAttrs: Record<string, string> = {}
   if (absPath !== undefined) dataAttrs['data-abs-path'] = absPath
   if (oldText !== undefined) dataAttrs['data-old-text'] = oldText
+  // 改后片段：桥接/扩展用它做跳行兜底（改前片段落盘后已不在文件里）
+  if (newText !== undefined) dataAttrs['data-new-text'] = newText
   if (line !== undefined) dataAttrs['data-line'] = String(line)
 
   return (

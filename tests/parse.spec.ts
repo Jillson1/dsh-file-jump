@@ -3,6 +3,7 @@ import {
   filePathFromArgs,
   resolveAbsPath,
   editOldTextFrom,
+  editNewTextFrom,
   readOffsetFrom,
   isErrorBlock,
   blockArgsRaw,
@@ -99,5 +100,21 @@ describe('isErrorBlock / blockArgsRaw', () => {
   it('错误 block isError=true', () => {
     const b = { ...runningBlock(), kind: 'tool-result', isError: true } as unknown as ToolCallBlock
     expect(isErrorBlock(b)).toBe(true)
+  })
+})
+
+describe('editNewTextFrom', () => {
+  it('取 callView 首个 hunk 的 newText（跳行兜底）', () => {
+    const block = {
+      callId: 'c1',
+      name: 'edit',
+      argsRaw: '{"file_path":"a.ts","old_string":"x","new_string":"y"}',
+      callView: { card: 'diff', diffs: [{ path: 'a.ts', oldText: 'x', newText: 'y' }] },
+    } as never
+    expect(editNewTextFrom(block)).toBe('y')
+  })
+  it('无 hunk → undefined', () => {
+    const block = { callId: 'c2', name: 'edit', argsRaw: '{}' } as never
+    expect(editNewTextFrom(block)).toBeUndefined()
   })
 })
