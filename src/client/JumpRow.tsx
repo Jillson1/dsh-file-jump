@@ -8,7 +8,7 @@
  * visual is a compact path link so the conversation stays scannable.
  */
 
-import type { MouseEvent } from 'react'
+import { useEffect, useRef, type MouseEvent } from 'react'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import {
   blockArgsRaw,
@@ -18,6 +18,7 @@ import {
   readOffsetFrom,
   resolveAbsPath,
 } from './parse.ts'
+import { takePendingDiff } from './diffNotify.ts'
 import css from './jump.module.css'
 
 type JumpRowProps = ToolCallViewProps & { openFile: (path: string) => void }
@@ -43,12 +44,36 @@ function titleFor(toolName: string, displayPath: string): string {
  * - read: data-abs-path (cwd-resolved) + data-line (result offset, precise)
  * - edit: data-abs-path + data-old-text (extension locates the changed line)
  * - write: data-abs-path only (open, no line)
+ *
+ * Diff notification (A 组): each time a settled edit/write block first appears
+ * in a render, notify the host via the bridge so the VS Code extension can
+ * highlight the applied change in the editor. Dedupe by callId (stable across
+ * re-renders), so one mutation → exactly one notification.
  */
 export function JumpRow({ toolName, block, cwd, openFile }: JumpRowProps) {
   const argsRaw = blockArgsRaw(block)
   const filePath = filePathFromArgs(argsRaw)
   const absPath = resolveAbsPath(cwd, filePath)
   const isError = isErrorBlock(block)
+
+  // A 组 diff 通知：settled mutation 首次渲染时向宿主广播 applied diff。
+  // notifiedRef 跨渲染持久，callId 去重保证同一次修改只通知一次。
+  const notifiedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const pending = takePendingDiff(cwd, block, notifiedRef.current)
+    if (pending !== null) {
+      // 调试探针：供浏览器验证 dispatch 是否发生（无需桥接）
+      ;(window as unknown as Record<string, unknown>).__lastDiffDispatched = {
+        path: pending.path,
+        diffs: pending.diffs,
+        callId: pending.callId,
+        at: Date.now(),
+      }
+      window.dispatchEvent(
+        new CustomEvent(pending.kind, { detail: pending }),
+      )
+    }
+  }, [block, cwd])
 
   // Only render the jump affordance for a known file tool on a settled non-error call.
   if (filePath === undefined || isError) {
