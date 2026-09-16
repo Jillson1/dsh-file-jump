@@ -14,6 +14,7 @@ import { installComposerInjection } from './composerInject.ts'
 import { registerReplayDock } from './ReplayDock.tsx'
 import { registerSessionPulse } from './SessionPulse.tsx'
 import { installCheckpointBridge } from './checkpointBridge.ts'
+import { installQuickEdit } from './quickEdit.ts'
 
 /** Required service: slots for the toolview keyed-slot takeover. */
 export const inject = ['slots']
@@ -46,4 +47,6 @@ export function apply(ctx: ClientContext): void {
   // F9：检查点恢复走廊（扩展下发预览/应用 → 本插件调 /turn-rewind → 回执上行）。
   // 放在浏览器半边的理由：该端点是 DSH web 的**同源**路由，扩展宿主没有会话可达它。
   installCheckpointBridge()
+  // F11：Quick Edit 下行（VS Code 选区指令 → 写入本会话 composer 并提交）
+  installQuickEdit(ctx)
 }
