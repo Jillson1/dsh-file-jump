@@ -11,6 +11,7 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { JumpRow } from './JumpRow.tsx'
 import { installComposerInjection } from './composerInject.ts'
+import { registerReplayDock } from './ReplayDock.tsx'
 
 /** Required service: slots for the toolview keyed-slot takeover. */
 export const inject = ['slots']
@@ -32,6 +33,8 @@ export function apply(ctx: ClientContext): void {
     registerToolview(scope, 'read')
     registerToolview(scope, 'edit')
     registerToolview(scope, 'write')
+    // F1：输入区 dock 上的无头回放入口（会话快照 → 重播 applied diff → 账本跨 Reload 存活）
+    registerReplayDock(scope)
   })
   // "Add to DSH" 下行注入：把 VS Code 右键发来的文件引用写入当前会话 composer。
   installComposerInjection(ctx)

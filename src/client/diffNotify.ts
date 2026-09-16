@@ -10,7 +10,13 @@
  *
  * Wire shape (window-level event, same namespace as `injectComposer`, decoupled
  * from the bridge bundle — the bridge decides whether to forward to the host):
- *   { kind: 'dsh-file-jump:diffApplied', path, diffs: [{oldText, newText}], cwd, callId }
+ *   { kind: 'dsh-file-jump:diffApplied', path, diffs: [{oldText, newText}],
+ *     cwd, callId, tool, sessionId, source, turn }
+ *
+ * F1 (change book): `sessionId` archives the change under its session,
+ * `source` marks relay (live render) vs replay (historical scan) and `turn`
+ * records which round produced it. The host dedupes by callId, so the same
+ * mutation arriving over both channels yields exactly one book record.
  */
 
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
@@ -37,6 +43,12 @@ export interface DiffAppliedPayload {
   callId: string
   /** Source tool name ('edit' | 'write') — decides the host-side discard semantics. */
   tool?: string
+  /** F1: owning session id (the change book archives per session). */
+  sessionId?: string
+  /** F1: relay = live render hook, replay = historical snapshot scan. */
+  source?: 'relay' | 'replay'
+  /** F1: turn the change belongs to (0/absent = unknown). */
+  turn?: number
 }
 
 /** One hunk from the wire `card:'diff'` view (oldText may be null for create/overwrite). */
@@ -145,6 +157,13 @@ export function takePendingDiff(
   cwd: string | undefined,
   block: ToolCallBlock,
   notified: Set<string>,
+  /**
+   * F1 attribution: the row knows which session and which turn it renders
+   * (`ToolCallViewProps` carries the session standard kit), so the relay path
+   * labels its records exactly like the replay path does. Absent → the host
+   * falls back to its own session bucket.
+   */
+  opts: { sessionId?: string; turn?: number } = {},
 ): DiffAppliedPayload | null {
   // RunningToolCall 与 ToolResultNode 都携带 callId，直接读取（union 共享字段）。
   const callId = block.callId
@@ -155,5 +174,16 @@ export function takePendingDiff(
   const path = diffTargetPath(cwd, block)
   if (path === undefined) return null
   notified.add(callId)
-  return { kind: DIFF_EVENT, path, diffs, cwd, callId, tool: blockName(block) }
+  const payload: DiffAppliedPayload = {
+    kind: DIFF_EVENT,
+    path,
+    diffs,
+    callId,
+    source: 'relay',
+    tool: blockName(block),
+  }
+  if (cwd !== undefined && cwd !== '') payload.cwd = cwd
+  if (opts.sessionId !== undefined && opts.sessionId !== '') payload.sessionId = opts.sessionId
+  if (typeof opts.turn === 'number' && Number.isFinite(opts.turn)) payload.turn = opts.turn
+  return payload
 }

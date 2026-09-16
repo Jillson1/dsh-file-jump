@@ -116,6 +116,8 @@ describe('takePendingDiff', () => {
       cwd: '/w',
       callId: 'c-edit-1',
       tool: 'edit',
+      // F1：relay 通知也带来源标记（账本据此区分实时/回放）
+      source: 'relay',
     })
     expect(notified.has('c-edit-1')).toBe(true)
   })
@@ -181,5 +183,21 @@ describe('payload shape', () => {
     expect(diffs).toBeDefined()
     expect(typeof diffs?.[0].oldText).toBe('string')
     expect(typeof diffs?.[0].newText).toBe('string')
+  })
+
+  it('F1：relay 通知带上会话 id（账本按会话归档，避免 local 幽灵桶）', () => {
+    const notified = new Set<string>()
+    const p = takePendingDiff('/w', settledEdit(), notified, { sessionId: 'sess-1' })
+    expect(p?.sessionId).toBe('sess-1')
+    expect(p?.source).toBe('relay')
+  })
+  it('F1：会话 id 缺失时不写字段（扩展侧回落到自己的桶）', () => {
+    const p = takePendingDiff('/w', settledEdit(), new Set(), { sessionId: '' })
+    expect(p && 'sessionId' in p).toBe(false)
+    expect(p?.source).toBe('relay')
+  })
+  it('F1：cwd 为空串时不写 cwd 字段（避免扩展按空基准解析相对路径）', () => {
+    const p = takePendingDiff('', settledEdit(), new Set())
+    expect(p && 'cwd' in p).toBe(false)
   })
 })

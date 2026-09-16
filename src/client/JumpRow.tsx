@@ -51,7 +51,7 @@ function titleFor(toolName: string, displayPath: string): string {
  * highlight the applied change in the editor. Dedupe by callId (stable across
  * re-renders), so one mutation → exactly one notification.
  */
-export function JumpRow({ toolName, block, cwd, openFile }: JumpRowProps) {
+export function JumpRow({ toolName, block, cwd, sessionId, openFile }: JumpRowProps) {
   const argsRaw = blockArgsRaw(block)
   const filePath = filePathFromArgs(argsRaw)
   const absPath = resolveAbsPath(cwd, filePath)
@@ -61,7 +61,11 @@ export function JumpRow({ toolName, block, cwd, openFile }: JumpRowProps) {
   // notifiedRef 跨渲染持久，callId 去重保证同一次修改只通知一次。
   const notifiedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const pending = takePendingDiff(cwd, block, notifiedRef.current)
+    // F1：relay 通知同样带上会话 id（tool.call.toolview 是 session 域槽，props 自带 sessionId），
+    // 这样 relay 与 replay 两条通道归档到同一个会话桶，账本不会出现 'local' 幽灵桶。
+    const pending = takePendingDiff(cwd, block, notifiedRef.current, {
+      sessionId: typeof sessionId === 'string' ? sessionId : undefined,
+    })
     if (pending !== null) {
       // 调试探针：供浏览器验证 dispatch 是否发生（无需桥接）
       ;(window as unknown as Record<string, unknown>).__lastDiffDispatched = {
