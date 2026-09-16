@@ -1,7 +1,7 @@
 {
   "name": "@jillson1/dsh-file-jump",
   "description": "DSH web GUI plugin: 让 read/edit/write 工具卡片的文件路径带上绝对路径与修改片段，点击后由 dsh-vscode 扩展在 VS Code 编辑区打开并精确跳行",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
