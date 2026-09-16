@@ -13,6 +13,7 @@ import { JumpRow } from './JumpRow.tsx'
 import { installComposerInjection } from './composerInject.ts'
 import { registerReplayDock } from './ReplayDock.tsx'
 import { registerSessionPulse } from './SessionPulse.tsx'
+import { installCheckpointBridge } from './checkpointBridge.ts'
 
 /** Required service: slots for the toolview keyed-slot takeover. */
 export const inject = ['slots']
@@ -42,4 +43,7 @@ export function apply(ctx: ClientContext): void {
   })
   // "Add to DSH" 下行注入：把 VS Code 右键发来的文件引用写入当前会话 composer。
   installComposerInjection(ctx)
+  // F9：检查点恢复走廊（扩展下发预览/应用 → 本插件调 /turn-rewind → 回执上行）。
+  // 放在浏览器半边的理由：该端点是 DSH web 的**同源**路由，扩展宿主没有会话可达它。
+  installCheckpointBridge()
 }
