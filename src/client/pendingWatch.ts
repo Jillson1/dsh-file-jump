@@ -17,11 +17,16 @@
  * the dock component only wires them to the snapshot and the bridge.
  */
 
-/** Downlink event the bridge delivers inside this iframe. */
+/** Downlink events the bridge delivers inside this iframe. */
 export const APPROVAL_DECISION_EVENT = 'dsh-file-jump:approvalDecision'
+export const QUESTION_ANSWER_EVENT = 'dsh-file-jump:questionAnswer'
 
 /** Uplink kind names (the bridge whitelists exactly these). */
-export const UPLINK_KINDS = { sessionState: 'sessionState', approvalRequest: 'approvalRequest' } as const
+export const UPLINK_KINDS = {
+  sessionState: 'sessionState',
+  approvalRequest: 'approvalRequest',
+  questionRequest: 'questionRequest',
+} as const
 
 /** Approval outcome accepted by the host payload (no "always allow" exists). */
 export type ApprovalOutcome = 'allowed-once' | 'rejected'
@@ -180,6 +185,98 @@ export async function answerApproval(
     return true
   } catch {
     // already settled（浏览器端先答 / 超时）——静默忽略，不改判也不重试
+    return false
+  }
+}
+
+// ============================================================================
+// F8：提问 / plan-review 半边
+//
+// 与审批同源（都是 `pending` 上的可应答等待），但**回答形状完全不同**：
+// 审批是 `{ sessionId, approvalId, outcome }`，提问是整批一次作答
+// `{ sessionId, answer: { answers: [{ id, selected[], custom? }] } }`——一次 ask 多问一答，不能拆。
+// 这就是 pendingWatch 里 question 与 approval 分开收集、分开回答的原因。
+//
+// 注意：host 的 `question/requested` 帧**没有 questionId**（rpcId 就是逻辑 id）。
+// 因此这里用 `wait.key`（`q:<rpcId>`）作为扩展侧的问句标识：它对回放稳定，且能唯一映射回等待对象。
+// ============================================================================
+
+/** Payload forwarded to the extension for one question batch. */
+export interface QuestionRequestPayload {
+  readonly sessionId: string
+  /** `wait.key` (`q:<rpcId>`) — the only stable identifier the frame carries. */
+  readonly questionId: string
+  /** Raw `AskUserQuestionItem[]` (the extension owns presentation). */
+  readonly questions: readonly unknown[]
+  /** The wait object this request came from. */
+  readonly wait: PendingWaitLike
+}
+
+/** Narrow an unknown payload into the question frame fields (must have a non-empty `questions` array). */
+function questionFields(payload: unknown): { questions: readonly unknown[] } | null {
+  if (payload === null || typeof payload !== 'object') return null
+  const questions = (payload as { questions?: unknown }).questions
+  if (!Array.isArray(questions) || questions.length === 0) return null
+  const items = questions.filter((q) => q !== null && typeof q === 'object')
+  if (items.length === 0) return null
+  return { questions: items }
+}
+
+/**
+ * F8 payload derivation (pure): collect the *unseen* question waits.
+ * Empty/invalid batches are dropped — the wire contract already forbids them,
+ * and a modal with no question is worse than no modal.
+ */
+export function collectQuestionRequests(
+  session: PendingSessionLike,
+  seen: Set<string>,
+): QuestionRequestPayload[] {
+  const out: QuestionRequestPayload[] = []
+  for (const wait of session.pending ?? []) {
+    if (wait.kind !== 'question') continue
+    if (typeof wait.key !== 'string' || wait.key === '') continue
+    if (seen.has(wait.key)) continue
+    const fields = questionFields(wait.payload)
+    if (fields === null) continue
+    seen.add(wait.key)
+    out.push({
+      sessionId: typeof wait.sessionId === 'string' && wait.sessionId !== '' ? wait.sessionId : session.sessionId,
+      questionId: wait.key,
+      questions: fields.questions,
+      wait,
+    })
+  }
+  return out
+}
+
+/** Build the question uplink envelope (data only — the live wait stays local). */
+export function questionUplink(request: QuestionRequestPayload): BridgeUplink {
+  return {
+    kind: UPLINK_KINDS.questionRequest,
+    payload: { sessionId: request.sessionId, questionId: request.questionId, questions: request.questions },
+  }
+}
+
+/**
+ * Answer one question batch through the host's response carrier.
+ *
+ * Payload shape verified in the rc.8 checkout: `{ sessionId, answer }` where
+ * `answer` is `{ answers: [{ id, selected: string[], custom? }] }` — one ask(),
+ * many questions, **one** answer (never split per question).
+ *
+ * @returns true when the host accepted the answer
+ */
+export async function answerQuestion(
+  wait: PendingWaitLike & { respond?(result: unknown): Promise<unknown> },
+  answer: unknown,
+): Promise<boolean> {
+  if (typeof wait.respond !== 'function') return false
+  if (answer === null || typeof answer !== 'object') return false
+  try {
+    await wait.respond({ ok: true, value: { sessionId: wait.sessionId, answer } })
+    return true
+  } catch {
+    // already settled（浏览器端先答 / 会话已推进）——静默忽略
     return false
   }
 }

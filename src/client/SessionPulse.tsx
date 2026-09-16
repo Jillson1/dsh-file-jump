@@ -20,9 +20,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   APPROVAL_DECISION_EVENT,
+  QUESTION_ANSWER_EVENT,
   answerApproval,
+  answerQuestion,
   approvalUplink,
   collectApprovalRequests,
+  collectQuestionRequests,
+  questionUplink,
   sessionStatePayload,
   sessionStateUplink,
   type ApprovalOutcome,
@@ -73,6 +77,8 @@ export function SessionPulse({ session }: SessionPulseProps): null {
   const seenRef = useRef<Set<string>>(new Set())
   /** approvalId → live wait object (only the object can settle the interaction) */
   const waitsRef = useRef<Map<string, PendingWaitLike>>(new Map())
+  /** questionId (= wait.key) → live wait object（提问按 key 映射：帧里没有 questionId） */
+  const questionWaitsRef = useRef<Map<string, PendingWaitLike>>(new Map())
   const lastStateRef = useRef<string>('')
 
   useEffect(() => {
@@ -93,6 +99,15 @@ export function SessionPulse({ session }: SessionPulseProps): null {
     for (const request of requests) {
       waitsRef.current.set(request.approvalId, request.wait)
       const uplink = approvalUplink(request, reasonOf(request.wait))
+      publish(uplink.kind, uplink.payload)
+    }
+
+    // F8：把"新出现的提问等待"转给扩展（QuickPick / 计划文档由扩展呈现）
+    // seen 与审批共用：key 前缀不同（a:/q:），不会互相顶掉
+    const questions = collectQuestionRequests(like, seenRef.current)
+    for (const request of questions) {
+      questionWaitsRef.current.set(request.questionId, request.wait)
+      const uplink = questionUplink(request)
       publish(uplink.kind, uplink.payload)
     }
   }, [session])
@@ -117,8 +132,25 @@ export function SessionPulse({ session }: SessionPulseProps): null {
         if (ok) waitsRef.current.delete(d.approvalId as string)
       })
     }
+    const onQuestionAnswer = (e: MessageEvent): void => {
+      const d = e.data as { kind?: unknown; questionId?: unknown; answer?: unknown } | undefined
+      if (d === undefined || d === null || d.kind !== QUESTION_ANSWER_EVENT) return
+      if (typeof d.questionId !== 'string' || d.questionId === '') return
+      const wait = questionWaitsRef.current.get(d.questionId)
+      if (wait === undefined) return // 等待已消失（浏览器端先答 / 会话推进）→ 静默忽略
+      void answerQuestion(
+        wait as PendingWaitLike & { respond?(r: unknown): Promise<unknown> },
+        d.answer,
+      ).then((ok) => {
+        if (ok) questionWaitsRef.current.delete(d.questionId as string)
+      })
+    }
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
+    window.addEventListener('message', onQuestionAnswer)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.removeEventListener('message', onQuestionAnswer)
+    }
   }, [])
 
   return null
